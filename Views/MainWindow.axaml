@@ -1,20 +1,53 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:NavigatorEditor.ViewModels"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:vm="clr-namespace:NavigatorEditor.ViewModels"
+        xmlns:conv="clr-namespace:NavigatorEditor.Converters"
         x:Class="NavigatorEditor.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="NavigatorEditor">
+        Width="960" Height="640"
+        Title="Navigator Editor">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+    <Window.DataContext>
+        <vm:MainWindowViewModel />
+    </Window.DataContext>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <DockPanel>
 
+        <Border DockPanel.Dock="Top" Padding="12" CornerRadius="6"
+                Background="{Binding Status, Converter={x:Static conv:BoolConverters.TrueToGreenFalseToAmber}}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="1" Margin="12,0,0,0"
+                           Text="{Binding StatusText}" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ColumnDefinitions="*">
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="服务器地址:" VerticalAlignment="Center" />
+                <TextBox Width="360" Text="{Binding Address}" Watermark="http://&lt;address&gt;:&lt;port&gt;" />
+                <Button Content="{Binding ConnectButtonText}" 
+                        IsEnabled="{Binding !IsBusy}"
+                        Command="{Binding SwitchConnection}" />
+            </StackPanel>
+
+            <!-- Command Input region -->
+            <Border Grid.Row="1">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox Width="360" Watermark="输入命令..." Text="{Binding CommandInput}" />
+                    <Button Content="发送" Command="{Binding SendCommand}" IsEnabled="{Binding Status}" Margin="8,0,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="2" BorderThickness="1" BorderBrush="#444" Padding="8" CornerRadius="4" Margin="0,8,0,8">
+                <TextBox Text="{Binding LogText}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         FontFamily="Consolas, Menlo, monospace"
+                         MinHeight="220" />
+            </Border>
+
+        </Grid>
+
+    </DockPanel>
 </Window>
