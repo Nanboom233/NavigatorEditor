@@ -19,7 +19,7 @@ namespace NavigatorEditor.GrpcClient
         private Task? _heartbeatTask;
         private Task? _logTask;
 
-        public event Action<string, long>? OnLog; // message, timestamp
+        public event Action<string, int, long>? OnLog; // message, timestamp
         public event Action<string>? OnDisconnected; // reason
 
         private GrpcClient(Uri address)
@@ -30,7 +30,7 @@ namespace NavigatorEditor.GrpcClient
                 KeepAlivePingTimeout = TimeSpan.FromSeconds(5), // max wait 5 seconds for ping ack
                 KeepAlivePingPolicy = HttpKeepAlivePingPolicy.Always // make sure to always ping
             };
-            _channel =  GrpcChannel.ForAddress(address, new GrpcChannelOptions
+            _channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
             {
                 HttpHandler = socketSettings,
                 MaxReceiveMessageSize = 64 * 1024 * 1024 // 64MB
@@ -53,14 +53,14 @@ namespace NavigatorEditor.GrpcClient
             tmpClient.StartMonitoring();
             return tmpClient;
         }
-        
+
         public async Task<CommandResponse> Command(string command)
         {
             try
             {
                 // Send metadata headers if present
                 var callOptions = _headers.Count > 0 ? new CallOptions(headers: _headers) : default;
-                return await _client.commandAsync(new CommandRequest { Command = command }, callOptions);
+                return await _client.CommandAsync(new CommandRequest { Command = command }, callOptions);
             }
             catch (RpcException ex)
             {
@@ -72,9 +72,30 @@ namespace NavigatorEditor.GrpcClient
         public async Task<HeartbeatPacket> Heartbeat()
         {
             var callOptions = _headers.Count > 0 ? new CallOptions(headers: _headers) : default;
-            return await _client.heartbeatAsync(new Empty(),callOptions);
+            return await _client.HeartbeatAsync(new Empty(), callOptions);
         }
-        
+
+        public async Task<InterfacesCollection> GetInterfaces()
+        {
+            var callOptions = _headers.Count > 0 ? new CallOptions(headers: _headers) : default;
+            return await _client.GetInterfacesAsync(new Empty(), callOptions);
+        }
+
+        public async Task<CommandResponse> WriteInterfaces(InterfacesCollection interfacesCollection)
+        {
+            try
+            {
+                var callOptions = _headers.Count > 0 ? new CallOptions(headers: _headers) : default;
+                return await _client.WriteInterfacesAsync(interfacesCollection, callOptions);
+            }
+            catch (RpcException ex)
+            {
+                Debug.WriteLine($"RPC Error: {ex.Status}");
+                throw;
+            }
+        }
+
+
         private void StartMonitoring()
         {
             _cts = new CancellationTokenSource();
@@ -99,11 +120,18 @@ namespace NavigatorEditor.GrpcClient
                         failCount++;
                         if (failCount >= 2)
                         {
-                            OnDisconnected?.Invoke($"Heartbeat failed: {ex.Message}"); 
+                            OnDisconnected?.Invoke($"Heartbeat failed: {ex.Message}");
                             _ = DisposeAsync();
                             break;
                         }
-                        try { await Task.Delay(TimeSpan.FromSeconds(2), token); } catch { }
+
+                        try
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(2), token);
+                        }
+                        catch
+                        {
+                        }
                     }
                 }
             }, token);
@@ -111,21 +139,22 @@ namespace NavigatorEditor.GrpcClient
             _logTask = Task.Run(async () =>
             {
                 var callOptions = _headers.Count > 0 ? new CallOptions(headers: _headers) : default;
-                using var call = _client.subscribe_logs(new Empty(), callOptions);
+                using var call = _client.SubscribeLogs(new Empty(), callOptions);
                 try
                 {
                     while (await call.ResponseStream.MoveNext(token))
                     {
                         var entry = call.ResponseStream.Current;
-                        OnLog?.Invoke(entry.Message, entry.Timestamp);
+                        OnLog?.Invoke(entry.Message, entry.Level, entry.Timestamp);
                     }
                 }
                 catch (Exception ex)
                 {
-                    if (ex is OperationCanceledException || ex is RpcException { StatusCode: StatusCode.Cancelled }) 
-                    { 
-                        return; 
+                    if (ex is OperationCanceledException || ex is RpcException { StatusCode: StatusCode.Cancelled })
+                    {
+                        return;
                     }
+
                     if (!token.IsCancellationRequested)
                     {
                         OnDisconnected?.Invoke($"Log stream error: {ex.Message}");
@@ -138,8 +167,22 @@ namespace NavigatorEditor.GrpcClient
         private async Task ShutdownAsync()
         {
             _cts?.Cancel();
-            try { if (_logTask != null) await _logTask; } catch { }
-            try { if (_heartbeatTask != null) await _heartbeatTask; } catch { }
+            try
+            {
+                if (_logTask != null) await _logTask;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                if (_heartbeatTask != null) await _heartbeatTask;
+            }
+            catch
+            {
+            }
+
             await _channel.ShutdownAsync();
         }
 
@@ -148,5 +191,4 @@ namespace NavigatorEditor.GrpcClient
             await ShutdownAsync();
         }
     }
-    
 }
